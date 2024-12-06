@@ -2,11 +2,15 @@
 name = "minecraft-net-proc"
 version = "0.1.0"
 edition = "2021"
+authors = ["Schatten2020"]
+description = "procedural macros for the minecraft-net crate"
+license-file = "LICENSE"
+repository = "https://github.com/Schatten2021/rust-minecraft-net-proc.git"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-syn = "2.0"  # For parsing Rust code
-quote = "1.0" # For generating Rust code
-proc-macro2 = "1.0" # Backend for token streams
+syn = "2.0"
+quote = "1.0"
+proc-macro2 = "1.0"
