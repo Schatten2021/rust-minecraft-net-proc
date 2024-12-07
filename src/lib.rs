@@ -8,12 +8,8 @@ use syn::{DeriveInput, Expr, LitInt, Path, PathArguments, PathSegment, Type};
 #[proc_macro_derive(Packet, attributes(id, len, Var, Const, when))]
 pub fn derive_packet(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the input tokens into a syntax tree
-    let input = syn::parse(input).unwrap();
+    let ast: DeriveInput = syn::parse(input).unwrap();
 
-    // Generate code based on the input
-    impl_packet_derive(&input)
-}
-fn impl_packet_derive(ast: &DeriveInput) -> proc_macro::TokenStream {
     let id = get_packet_id(&ast.attrs);
     let name = &ast.ident;
     let Data::Struct(s) = &ast.data else {
@@ -36,6 +32,49 @@ fn impl_packet_derive(ast: &DeriveInput) -> proc_macro::TokenStream {
     let res = quote! {
         impl crate::Packet for #name {
             const ID: i32 = #id;
+            fn to_bytes(&self) -> Vec<u8> {
+                let vector: Vec<Vec<u8>> = vec![
+                    #(#field_encoders),*
+                ];
+                vector.iter().flatten().cloned().collect()
+            }
+            fn from_reader(reader: &mut crate::fields::PacketReader) -> crate::Result<Self> {
+                #(#field_decoders);*;
+                Ok(Self {
+                    #(#field_names),*
+                })
+            }
+        }
+    };
+    // #[cfg(debug_assertions)]
+    // println!("{:#}", &res);
+    res.into()
+}
+#[proc_macro_derive(Field, attributes(len, Var, Const, when))]
+pub fn derive_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // Parse the input tokens into a syntax tree
+    let ast: DeriveInput = syn::parse(input).unwrap();
+
+    let name = &ast.ident;
+    let Data::Struct(s) = &ast.data else {
+        panic!("Can only be used for structs");
+    };
+
+    let mut field_encoders = Vec::with_capacity(s.fields.len());
+    let mut field_decoders = Vec::with_capacity(s.fields.len());
+    let mut field_names = Vec::with_capacity(s.fields.len());
+    for field in &s.fields {
+        let field_name = field.ident.clone().expect("unnamed fields");
+        let field_type = &field.ty;
+        field_names.push(field_name.clone());
+        let (encoder, decoder) = handle_field(field_type, quote! {self.#field_name}, &field.attrs);
+        let decoder = quote! {let #field_name = #decoder};
+        field_encoders.push(encoder);
+        field_decoders.push(decoder);
+    };
+
+    let res = quote! {
+        impl crate::Field for #name {
             fn to_bytes(&self) -> Vec<u8> {
                 let vector: Vec<Vec<u8>> = vec![
                     #(#field_encoders),*
@@ -105,12 +144,12 @@ fn handle_field(field_type: &Type, val_ref: impl ToTokens + Clone, attrs: &[Attr
         "f32" => (quote! { crate::fields::encode_float(#val_ref) }, quote! { reader.read_float() }),
         "f64" => (quote! { crate::fields::encode_double(#val_ref) }, quote! { reader.read_double() }),
         "String" => (quote! { crate::fields::encode_string(#val_ref .clone()) }, quote! { reader.read_string()? }),
-        t => if ident == "Vec" {
+        _ => if ident == "Vec" {
             handle_vec(segment, val_ref, attrs)
         } else if ident == "Option" {
             handle_option(segment, val_ref, attrs)
         } else {
-            panic!("unhandled type {t}")
+            handle_generic(val_ref, path)
         }
     }
 }
@@ -241,4 +280,8 @@ fn get_dependency(attrs: &[Attribute]) -> Path {
         return syn::parse_str::<Path>(&*path_str.value()).expect("Invalid path");
     }
     panic!("requires a \"len\" attribute");
+}
+
+fn handle_generic(name: impl ToTokens, path: &Path) -> (TokenStream, TokenStream) {
+    (quote! {crate::Field::to_bytes(&#name)}, quote! {{use crate::Field; #path::from_reader(reader)?}})
 }

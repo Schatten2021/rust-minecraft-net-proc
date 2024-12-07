@@ -1,6 +1,6 @@
 [package]
 name = "minecraft-net-proc"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Schatten2020"]
 description = "procedural macros for the minecraft-net crate"
