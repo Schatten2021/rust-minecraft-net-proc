@@ -144,13 +144,33 @@ fn handle_field(field_type: &Type, val_ref: impl ToTokens + Clone, attrs: &[Attr
         "f32" => (quote! { crate::fields::encode_float(#val_ref) }, quote! { reader.read_float() }),
         "f64" => (quote! { crate::fields::encode_double(#val_ref) }, quote! { reader.read_double() }),
         "String" => (quote! { crate::fields::encode_string(#val_ref .clone()) }, quote! { reader.read_string()? }),
+        
+        "Byte" => (quote! { crate::fields::encode_byte(#val_ref) }, quote! { reader.read_byte() }),
+        "UByte" => (quote! { crate::fields::encode_ubyte(#val_ref) }, quote! { reader.read_ubyte() }),
+        "Short" => (quote! { crate::fields::encode_short(#val_ref) }, quote! { reader.read_short() }),
+        "UShort" => (quote! { crate::fields::encode_ushort(#val_ref) }, quote! { reader.read_ushort() }),
+        "Int" => (quote! { crate::fields::encode_int(#val_ref) }, quote! { reader.read_int() }),
+        "UInt" => (quote! { crate::fields::encode_uint(#val_ref) }, quote! { reader.read_uint() }),
+        "Long" => (quote! { crate::fields::encode_long(#val_ref) }, quote! { reader.read_long() }),
+        "UUID" => (quote! { crate::fields::encode_uuid(#val_ref) }, quote! { reader.read_uuid() }),
+        "Float" => (quote! { crate::fields::encode_float(#val_ref) }, quote! { reader.read_float() }),
+        "Double" => (quote! { crate::fields::encode_double(#val_ref) }, quote! { reader.read_double() }),
+        
+        "Identifier" => (quote! { crate::fields::encode_identifier(#val_ref) }, quote! { reader.read_identifier()? }),
+        "Angle" => (quote! { crate::fields::encode_angle(#val_ref) }, quote! { reader.read_angle() }),
+        "VarInt" => (quote! { crate::fields::encode_var_int(#val_ref) }, quote! { reader.read_var_int()? }),
+        "VarLong" => (quote! { crate::fields::encode_var_long(#val_ref) }, quote! { reader.read_var_long()? }),
+        "PrefixedArray" => (quote! { crate::fields::encode_prefixed_array(&#val_ref) }, quote! { reader.read_prefixed_array()? }),
+        "PrefixedOptional" => (quote! { crate::fields::encode_prefixed_optional(&#val_ref) }, quote! { reader.read_prefixed_optional()? }),
+        
         _ => if ident == "Vec" {
             handle_vec(segment, val_ref, attrs)
         } else if ident == "Option" {
             handle_option(segment, val_ref, attrs)
         } else {
+            println!("unhandled type {:?}", ident);
             handle_generic(val_ref, path)
-        }
+        },
     }
 }
 fn is_var(attrs: &[Attribute]) -> bool {
