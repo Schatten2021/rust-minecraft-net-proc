@@ -156,12 +156,12 @@ fn handle_field(field_type: &Type, val_ref: impl ToTokens + Clone, attrs: &[Attr
         "Float" => (quote! { crate::fields::encode_float(#val_ref) }, quote! { reader.read_float() }),
         "Double" => (quote! { crate::fields::encode_double(#val_ref) }, quote! { reader.read_double() }),
         
-        "Identifier" => (quote! { crate::fields::encode_identifier(#val_ref) }, quote! { reader.read_identifier()? }),
+        "Identifier" => (quote! { crate::fields::encode_identifier(#val_ref .clone()) }, quote! { reader.read_identifier()? }),
         "Angle" => (quote! { crate::fields::encode_angle(#val_ref) }, quote! { reader.read_angle() }),
         "VarInt" => (quote! { crate::fields::encode_var_int(#val_ref) }, quote! { reader.read_var_int()? }),
         "VarLong" => (quote! { crate::fields::encode_var_long(#val_ref) }, quote! { reader.read_var_long()? }),
-        "PrefixedArray" => (quote! { crate::fields::encode_prefixed_array(&#val_ref) }, quote! { reader.read_prefixed_array()? }),
-        "PrefixedOptional" => (quote! { crate::fields::encode_prefixed_optional(&#val_ref) }, quote! { reader.read_prefixed_optional()? }),
+        "PrefixedArray" => handle_prefixed_array(segment, val_ref, attrs),
+        "PrefixedOptional" => handle_prefixed_option(segment, val_ref, attrs),
         
         _ => if ident == "Vec" {
             handle_vec(segment, val_ref, attrs)
@@ -172,6 +172,42 @@ fn handle_field(field_type: &Type, val_ref: impl ToTokens + Clone, attrs: &[Attr
             handle_generic(val_ref, path)
         },
     }
+}
+fn handle_prefixed_array(segment: &PathSegment, name: impl ToTokens + Clone, attrs: &[Attribute]) -> (TokenStream, TokenStream) {
+    let PathArguments::AngleBracketed(args) = &segment.arguments else {
+        panic!("Invalid vector inner type")
+    };
+    let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() else {
+        panic!("Invalid vector inner type")
+    };
+    let (inner_encoder, inner_decoder) = handle_field(&inner_type, quote! {v.clone()}, attrs);
+    (quote! {
+        vec![crate::fields::encode_var_int(#name.len() as i32), #name.iter().cloned().flat_map(|v| #inner_encoder).collect()].iter().cloned().flatten().collect()
+    }, quote! {
+        {
+            let len = reader.read_var_int()?;
+            let mut v = Vec::with_capacity(len as usize);
+            for _ in 0..len {
+                v.push(#inner_decoder);
+            }
+            v
+        }
+    })
+}
+
+fn handle_prefixed_option(segment: &PathSegment, name: impl ToTokens + Clone, attrs: &[Attribute]) -> (TokenStream, TokenStream) {
+    let PathArguments::AngleBracketed(args) = &segment.arguments else {
+        panic!("Invalid vector inner type")
+    };
+    let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() else {
+        panic!("Invalid vector inner type")
+    };
+    let (inner_encoder, inner_decoder) = handle_field(&inner_type, quote! {v.clone()}, attrs);
+    (quote! {
+        if let Some(v) = &#name {vec![crate::fields::encode_bool(true), #inner_encoder].iter().cloned().flatten().collect()} else {crate::fields::encode_bool(false)}
+    }, quote! {
+        if reader.read_bool()? {Some(#inner_decoder)} else {None} 
+    })
 }
 fn is_var(attrs: &[Attribute]) -> bool {
     for attr in attrs {
