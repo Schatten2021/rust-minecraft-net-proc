@@ -1,13 +1,12 @@
+extern crate proc_macro;
 mod types_;
 mod types;
 
-extern crate proc_macro;
-
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{braced, parenthesized, parse_macro_input, Attribute, Data, Lit, Meta, Token};
-use syn::{DeriveInput, Expr, LitInt, Path, PathArguments, PathSegment, Type};
 use syn::parse::{Parse, ParseStream};
+use syn::{braced, parse_macro_input, Attribute, Data, Lit, Meta, Token};
+use syn::{DeriveInput, Expr, LitInt, Path, PathArguments, PathSegment, Type};
 
 struct FieldMacroInput {
     name: syn::Ident,
@@ -76,10 +75,12 @@ impl ToTokens for FieldMacroInput {
     }
 }
 #[proc_macro]
+#[allow(non_snake_case)]
 pub fn Field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as FieldMacroInput);
     input.to_token_stream().into()
 }
+
 struct PacketMacroInput {
     name: syn::Ident,
     id: syn::LitInt,
@@ -150,19 +151,90 @@ impl ToTokens for PacketMacroInput {
                 }
             }
         })
-        // tokens.append_all(quote! {
-        //     impl #name {
-        //         pub fn new(#(#field_names: #field_types,)*) -> Self {
-        //             Self {#(field_names,)*}
-        //         }
-        //     }
-        // })
     }
 }
 #[proc_macro]
+#[allow(non_snake_case)]
 pub fn Packet(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as PacketMacroInput);
     input.to_token_stream().into()
+}
+
+
+struct EnumMacroInput {
+    name: syn::Ident,
+    body: Vec<types::Field>,
+}
+impl Parse for EnumMacroInput {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name = input.parse::<syn::Ident>()?;
+        input.parse::<Token![,]>()?;
+        let raw_body;
+        braced!(raw_body in input);
+        let mut body = Vec::new();
+        while let Ok(f) = raw_body.parse::<types::Field>() {
+            body.push(f);
+        }
+        Ok(Self { name, body })
+    }
+}
+impl ToTokens for EnumMacroInput {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let name = &self.name;
+        if self.body.len() == 0 {
+            tokens.extend(quote! {
+                #[derive(Debug, Clone)]
+                pub enum #name {}
+                impl crate::Field for #name {
+                    fn to_bytes(&self) -> Vec<u8> {compile_error!("can't convert empty enum to bytes")}
+                    fn from_reader(reader: &mut crate::fields::PacketReader) -> crate::errors::Result<Self> {compile_error!("can't convert empty enum to bytes")}
+                }
+                impl crate::Field for #name {
+                    pub fn new() -> Self {Self {}}
+                }
+            })
+        }
+        if self.body.len() > i32::MAX as usize {
+            panic!("can't encode an enum with more options than an Integer. How did you even get here?")
+        }
+        let field_names = self.body.iter().map(|f| &f.name).collect::<Vec<_>>();
+        let field_types = self.body.iter().map(|f| match &f.r#type {
+            Some(v) => quote!{(#v)},
+            None => quote! {}
+        }).collect::<Vec<_>>();
+        let encoders = self.body.iter()
+            .enumerate()
+            .map(|(i, f)| f.get_enum_encoder(i))
+            .collect::<Vec<_>>();
+        let decoders = self.body.iter()
+            .enumerate()
+            .map(|(i, f)| f.get_enum_decoder(i))
+            .collect::<Vec<_>>();;
+        tokens.extend(quote! {
+            #[derive(Debug, Clone)]
+            pub enum #name {
+                #(#field_names #field_types,)*
+            }
+            impl crate::Field for #name {
+                fn to_bytes(&self) -> Vec<u8> {
+                    match self.clone() {
+                        #(#encoders,)*
+                    }
+                }
+                fn from_reader(reader: &mut crate::fields::PacketReader) -> crate::errors::Result<Self> {
+                    Ok(match reader.read_var_int()? {
+                        #(#decoders,)*
+                        v => return Err(crate::errors::Errors::InvalidEnum(format!("Integer {v} is outside of range for enum #name"))),
+                    })
+                }
+            }
+        })
+    }
+}
+#[proc_macro]
+#[allow(non_snake_case)]
+pub fn VarIntEnum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    parse_macro_input!(input as EnumMacroInput).to_token_stream().into()
 }
 
 #[deprecated]

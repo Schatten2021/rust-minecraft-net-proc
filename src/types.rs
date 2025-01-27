@@ -90,14 +90,14 @@ impl Type {
                     Some(inner) => inner.get_encoder("v"),
                 };
                 quote! {
-                    if let Some(v) = &#val_ref {
+                    if let Some(v) = #val_ref.clone() {
                         vec![crate::fields::encode_bool(true), #inner_encoder].iter().cloned().flatten().collect()
                     } else {
                         crate::fields::encode_bool(false)
                     }
                 }
             },
-            FieldType::Other(_) => quote! {crate::Field::to_bytes(#val_ref)},
+            FieldType::Other(_) => quote! {crate::Field::to_bytes(&#val_ref)},
             FieldType::None => panic!("no encoder associated with None field")
         }
     }
@@ -142,7 +142,7 @@ impl Type {
                 };
                 quote! { if reader.read_bool()? {Some(#inner_decoder)} else {None} }
             }
-            FieldType::Other(_) => quote! {crate::Field::from_reader(reader)},
+            FieldType::Other(_) => quote! {crate::Field::from_reader(reader)?},
             FieldType::None => panic!("no decoder associated with None field")
         }
     }
@@ -194,13 +194,16 @@ impl Parse for Field {
         let mut input: CustomParseStream = input.into();
         let name = input.parse::<syn::Ident>()?;
         if !input.try_consume::<syn::Token![:]>() {
+            input.try_consume::<syn::Token![,]>();
             return Ok(Self {
                 name, r#type: None,
             })
         }
+        let r#type = input.parse::<Type>()?;
+        input.try_consume::<syn::Token![,]>();
         Ok(Self {
             name,
-            r#type: Some(input.parse()?),
+            r#type: Some(r#type),
         })
     }
 }
@@ -211,6 +214,26 @@ impl Field {
     }
     pub fn get_struct_decoder(&self) -> TokenStream {
         self.r#type.as_ref().unwrap().get_decoder()
+    }
+    pub fn get_enum_encoder(&self, index: usize) -> TokenStream {
+        let name = &self.name;
+        let ty = match &self.r#type {
+            Some(ty) => ty.get_encoder(quote! {v}),
+            None => return quote! {Self::#name => crate::fields::encode_var_int(#index as i32)},
+        };
+        quote! {Self::#name(v) => {
+            vec![crate::fields::encode_var_int(#index as i32), #ty].iter().flatten().cloned().collect::<Vec<u8>>()
+        }}
+    }
+    pub fn get_enum_decoder(&self, index: usize) -> TokenStream {
+        let index = index as i32;
+        let name = &self.name;
+        let ty = match &self.r#type {
+            Some(ty) => ty,
+            None => return quote! { #index => Self::#name },
+        };
+        let decoder = ty.get_decoder();
+        quote! { #index => Self::#name(#decoder) }
     }
 }
 
