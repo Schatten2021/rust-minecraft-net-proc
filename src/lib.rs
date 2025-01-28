@@ -1,5 +1,4 @@
 extern crate proc_macro;
-mod types_;
 mod types;
 
 use proc_macro2::TokenStream;
@@ -7,6 +6,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 use syn::parse::{Parse, ParseStream};
 use syn::{braced, parse_macro_input, Attribute, Data, Lit, Meta, Token};
 use syn::{DeriveInput, Expr, LitInt, Path, PathArguments, PathSegment, Type};
+use crate::types::FieldType;
 
 struct FieldMacroInput {
     name: syn::Ident,
@@ -46,7 +46,7 @@ impl ToTokens for FieldMacroInput {
             return;
         }
         let field_names = self.body.iter().map(|f| &f.name).collect::<Vec<_>>();
-        let field_types = self.body.iter().map(|f| f.r#type.as_ref().expect("all fields must have a type for a Packet")).collect::<Vec<_>>();
+        let field_types = self.body.iter().map(|f| &f.r#type).collect::<Vec<_>>();
         let encoders = self.body.iter().map(|f| f.get_struct_encoder()).collect::<Vec<_>>();
         let decoders = self.body.iter().map(|f| f.get_struct_decoder()).collect::<Vec<_>>();
         tokens.append_all(quote! {
@@ -124,7 +124,7 @@ impl ToTokens for PacketMacroInput {
             return;
         }
         let field_names = self.body.iter().map(|f| &f.name).collect::<Vec<_>>();
-        let field_types = self.body.iter().map(|f| f.r#type.as_ref().expect("all fields must have a type for a Packet")).collect::<Vec<_>>();
+        let field_types = self.body.iter().map(|f| &f.r#type).collect::<Vec<_>>();
         let encoders = self.body.iter().map(|f| f.get_struct_encoder()).collect::<Vec<_>>();
         let decoders = self.body.iter().map(|f| f.get_struct_decoder()).collect::<Vec<_>>();
         tokens.append_all(quote! {
@@ -199,17 +199,20 @@ impl ToTokens for EnumMacroInput {
         }
         let field_names = self.body.iter().map(|f| &f.name).collect::<Vec<_>>();
         let field_types = self.body.iter().map(|f| match &f.r#type {
-            Some(v) => quote!{(#v)},
-            None => quote! {}
+            FieldType::None => quote! {},
+            v => quote!{(#v)},
         }).collect::<Vec<_>>();
         let encoders = self.body.iter()
-            .enumerate()
-            .map(|(i, f)| f.get_enum_encoder(i))
+            .enumerate().map(|(i, f)| match std::panic::catch_unwind(|| {
+                f.get_enum_encoder(i)}) {
+                Err(e) => {println!("error while parsing {}", self.name); std::panic::resume_unwind(e)},
+                Ok(v) => v,
+            })
             .collect::<Vec<_>>();
         let decoders = self.body.iter()
             .enumerate()
             .map(|(i, f)| f.get_enum_decoder(i))
-            .collect::<Vec<_>>();;
+            .collect::<Vec<_>>();
         tokens.extend(quote! {
             #[derive(Debug, Clone)]
             pub enum #name {
@@ -224,7 +227,7 @@ impl ToTokens for EnumMacroInput {
                 fn from_reader(reader: &mut crate::fields::PacketReader) -> crate::errors::Result<Self> {
                     Ok(match reader.read_var_int()? {
                         #(#decoders,)*
-                        v => return Err(crate::errors::Errors::InvalidEnum(format!("Integer {v} is outside of range for enum #name"))),
+                        v => return Err(crate::errors::Errors::InvalidEnum(format!("Integer {v} is outside of range for enum"))),
                     })
                 }
             }
@@ -234,10 +237,12 @@ impl ToTokens for EnumMacroInput {
 #[proc_macro]
 #[allow(non_snake_case)]
 pub fn VarIntEnum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    parse_macro_input!(input as EnumMacroInput).to_token_stream().into()
+    let stream = parse_macro_input!(input as EnumMacroInput).to_token_stream().into();
+    println!("{}", stream);
+    stream
 }
 
-#[deprecated]
+
 #[proc_macro_derive(Packet_old, attributes(id, len, Var, Const, when))]
 pub fn derive_packet(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the input tokens into a syntax tree
@@ -283,7 +288,7 @@ pub fn derive_packet(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     // println!("{:#}", &res);
     res.into()
 }
-#[deprecated]
+
 #[proc_macro_derive(Field_old, attributes(len, Var, Const, when))]
 pub fn derive_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the input tokens into a syntax tree
