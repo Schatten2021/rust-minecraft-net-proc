@@ -192,7 +192,8 @@ impl ToTokens for EnumMacroInput {
                 impl crate::Field for #name {
                     pub fn new() -> Self {Self {}}
                 }
-            })
+            });
+            return;
         }
         if self.body.len() > i32::MAX as usize {
             panic!("can't encode an enum with more options than an Integer. How did you even get here?")

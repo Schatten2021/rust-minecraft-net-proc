@@ -23,6 +23,7 @@ pub enum FieldType {
     VarLong,
     PrefixedArray(Box<FieldType>),
     PrefixedOptional(Box<FieldType>),
+    NBT,
     Other(syn::Path),
 }
 impl Parse for FieldType {
@@ -50,6 +51,7 @@ impl FieldType {
             Self::Angle => quote! {crate::fields::encode_angle(#val_ref)},
             Self::VarInt => quote! {crate::fields::encode_var_int(#val_ref)},
             Self::VarLong => quote! {crate::fields::encode_var_long(#val_ref)},
+            Self::NBT => quote! { crate::Field::to_bytes(&#val_ref) },
             Self::PrefixedArray(inner) => {
                 let inner_encoder = inner.get_encoder(quote!{ v.clone() });
                 quote! { vec![
@@ -89,6 +91,7 @@ impl FieldType {
             FieldType::Angle => quote! { reader.read_angle() },
             FieldType::VarInt => quote! { reader.read_var_int()? },
             FieldType::VarLong => quote! { reader.read_var_long()? },
+            FieldType::NBT => quote! { crate::Field::from_reader(reader)? },
             FieldType::PrefixedArray(inner) => {
                 let inner_decoder = inner.get_decoder();
                 quote! {
@@ -140,6 +143,7 @@ impl FieldType {
             "VarLong" => Self::VarLong,
             "PrefixedArray" => Self::PrefixedArray(inner.expect("PrefixedArray requires inner type")),
             "PrefixedOptional" => Self::PrefixedOptional(inner.expect("PrefixedOptional requires inner type")),
+            "NBT" => Self::NBT,
             _ => Self::Other(path),
         };
         t
@@ -170,6 +174,7 @@ impl ToTokens for FieldType {
             Self::Angle => quote! { crate::fields::types::Angle },
             Self::VarInt => quote! { crate::fields::types::VarInt },
             Self::VarLong => quote! { crate::fields::types::VarLong },
+            Self::NBT => quote! { crate::fields::types::NBT },
             Self::PrefixedArray(inner) => quote! { crate::fields::types::PrefixedArray<#inner> },
             Self::PrefixedOptional(inner) => quote! { crate::fields::types::PrefixedOptional<#inner> },
             Self::Other(i) => i.to_token_stream(),
