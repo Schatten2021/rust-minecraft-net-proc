@@ -184,6 +184,7 @@ pub struct Field {
 impl Parse for Field {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut input: CustomParseStream = input.into();
+        input.try_consume::<syn::Token![pub]>();
         let name = input.parse::<syn::Ident>()?;
         if !input.try_consume::<syn::Token![:]>() {
             input.try_consume::<syn::Token![,]>();
