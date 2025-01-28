@@ -21,7 +21,7 @@ impl Parse for FieldMacroInput {
         let mut body = Vec::new();
         while let Ok(f) = raw_body.parse::<types::Field>() {
             if f.r#type.is_none() {
-                panic!("Packet field type can't be None");
+                panic!("Field field type can't be None");
             }
             body.push(f);
         }
@@ -56,7 +56,7 @@ impl ToTokens for FieldMacroInput {
             }
             impl crate::Field for #name {
                 fn to_bytes(&self) -> Vec<u8> {
-                    vec![#(#encoders,)*].iter().flatten().cloned().collect()
+                    vec![#(#encoders,)*].iter().flatten().cloned().collect::<Vec<u8>>()
                 }
                 fn from_reader(reader: &mut crate::fields::PacketReader) -> crate::errors::Result<Self> {
                     Ok(Self {

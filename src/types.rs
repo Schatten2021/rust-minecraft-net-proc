@@ -54,14 +54,14 @@ impl FieldType {
                 let inner_encoder = inner.get_encoder(quote!{ v.clone() });
                 quote! { vec![
                     crate::fields::encode_var_int(#val_ref.len() as i32),
-                    #val_ref.iter().flat_map(|v| #inner_encoder).collect()
-                ].iter().cloned().flatten().collect()}
+                    #val_ref.iter().flat_map(|v| #inner_encoder).collect::<Vec<u8>>()
+                ].iter().cloned().flatten().collect::<Vec<u8>>()}
             },
             Self::PrefixedOptional(inner) => {
                 let inner_encoder = inner.get_encoder(quote! { v });
                 quote! {
                     if let Some(v) = #val_ref.clone() {
-                        vec![crate::fields::encode_bool(true), #inner_encoder].iter().cloned().flatten().collect()
+                        vec![crate::fields::encode_bool(true), #inner_encoder].iter().cloned().flatten().collect::<Vec<u8>>()
                     } else {
                         crate::fields::encode_bool(false)
                     }
