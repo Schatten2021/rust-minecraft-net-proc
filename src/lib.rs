@@ -9,11 +9,13 @@ use syn::{DeriveInput, Expr, LitInt, Path, PathArguments, PathSegment, Type};
 use crate::types::FieldType;
 
 struct FieldMacroInput {
+    attributes: Vec<Attribute>,
     name: syn::Ident,
     body: Vec<types::Field>,
 }
 impl Parse for FieldMacroInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let attributes = Attribute::parse_outer(input)?;
         let name = input.parse::<syn::Ident>()?;
         input.parse::<Token![,]>()?;
         let raw_body;
@@ -25,14 +27,16 @@ impl Parse for FieldMacroInput {
             }
             body.push(f);
         }
-        Ok(Self { name, body })
+        Ok(Self { name, body, attributes })
     }
 }
 impl ToTokens for FieldMacroInput {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let name = &self.name;
+        let attributes = &self.attributes;
         if self.body.len() == 0 {
             tokens.extend(quote! {
+                #(#attributes)*
                 #[derive(Debug, Clone)]
                 pub struct #name {}
                 impl crate::Field for #name {
@@ -47,12 +51,17 @@ impl ToTokens for FieldMacroInput {
         }
         let field_names = self.body.iter().map(|f| &f.name).collect::<Vec<_>>();
         let field_types = self.body.iter().map(|f| &f.r#type).collect::<Vec<_>>();
+        let field_attributes = self.body.iter().map(|f| &f.attributes).collect::<Vec<_>>();
         let encoders = self.body.iter().map(|f| f.get_struct_encoder()).collect::<Vec<_>>();
         let decoders = self.body.iter().map(|f| f.get_struct_decoder()).collect::<Vec<_>>();
         tokens.append_all(quote! {
+            #(#attributes)*
             #[derive(Debug, Clone)]
             pub struct #name {
-                #(pub #field_names: #field_types,)*
+                #(
+                    #(#field_attributes)*
+                    pub #field_names: #field_types,
+                )*
             }
             impl crate::Field for #name {
                 fn to_bytes(&self) -> Vec<u8> {
@@ -84,10 +93,12 @@ pub fn Field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 struct PacketMacroInput {
     name: syn::Ident,
     id: syn::LitInt,
+    attributes: Vec<Attribute>,
     body: Vec<types::Field>,
 }
 impl Parse for PacketMacroInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let attributes = Attribute::parse_outer(input)?;
         let name = input.parse::<syn::Ident>()?;
         input.parse::<Token![,]>()?;
         let id = input.parse::<syn::LitInt>()?;
@@ -101,15 +112,17 @@ impl Parse for PacketMacroInput {
             }
             body.push(f);
         }
-        Ok(Self { name, id, body })
+        Ok(Self { name, id, body, attributes })
     }
 }
 impl ToTokens for PacketMacroInput {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let name = &self.name;
         let id = &self.id;
+        let attributes = &self.attributes;
         if self.body.len() == 0 {
             tokens.extend(quote! {
+                #(#attributes)*
                 #[derive(Debug, Clone)]
                 pub struct #name {}
                 impl crate::Packet for #name {
@@ -125,12 +138,18 @@ impl ToTokens for PacketMacroInput {
         }
         let field_names = self.body.iter().map(|f| &f.name).collect::<Vec<_>>();
         let field_types = self.body.iter().map(|f| &f.r#type).collect::<Vec<_>>();
+        let field_attributes = self.body.iter().map(|f| &f.attributes).collect::<Vec<_>>();
         let encoders = self.body.iter().map(|f| f.get_struct_encoder()).collect::<Vec<_>>();
         let decoders = self.body.iter().map(|f| f.get_struct_decoder()).collect::<Vec<_>>();
         tokens.append_all(quote! {
+            #(#attributes)*
             #[derive(Debug, Clone)]
             pub struct #name {
-                #(pub #field_names: #field_types,)*
+                
+                #(
+                    #(#field_attributes)*
+                    pub #field_names: #field_types,
+                )*
             }
             impl crate::Packet for #name {
                 const ID: i32 = #id;
@@ -163,10 +182,12 @@ pub fn Packet(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 struct EnumMacroInput {
     name: syn::Ident,
+    attributes: Vec<Attribute>,
     body: Vec<types::Field>,
 }
 impl Parse for EnumMacroInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let attributes = Attribute::parse_outer(input)?;
         let name = input.parse::<syn::Ident>()?;
         input.parse::<Token![,]>()?;
         let raw_body;
@@ -175,14 +196,16 @@ impl Parse for EnumMacroInput {
         while let Ok(f) = raw_body.parse::<types::Field>() {
             body.push(f);
         }
-        Ok(Self { name, body })
+        Ok(Self { name, body, attributes })
     }
 }
 impl ToTokens for EnumMacroInput {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let name = &self.name;
+        let attributes = &self.attributes;
         if self.body.len() == 0 {
             tokens.extend(quote! {
+                #(#attributes)*
                 #[derive(Debug, Clone)]
                 pub enum #name {}
                 impl crate::Field for #name {
@@ -203,6 +226,7 @@ impl ToTokens for EnumMacroInput {
             FieldType::None => quote! {},
             v => quote!{(#v)},
         }).collect::<Vec<_>>();
+        let field_attributes = self.body.iter().map(|f| &f.attributes).collect::<Vec<_>>();
         let encoders = self.body.iter()
             .enumerate().map(|(i, f)| match std::panic::catch_unwind(|| {
                 f.get_enum_encoder(i)}) {
@@ -215,9 +239,13 @@ impl ToTokens for EnumMacroInput {
             .map(|(i, f)| f.get_enum_decoder(i))
             .collect::<Vec<_>>();
         tokens.extend(quote! {
+            #(#attributes)*
             #[derive(Debug, Clone)]
             pub enum #name {
-                #(#field_names #field_types,)*
+                #(
+                    #(#field_attributes)*
+                    #field_names #field_types,
+                )*
             }
             impl crate::Field for #name {
                 fn to_bytes(&self) -> Vec<u8> {
@@ -238,9 +266,7 @@ impl ToTokens for EnumMacroInput {
 #[proc_macro]
 #[allow(non_snake_case)]
 pub fn VarIntEnum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let stream = parse_macro_input!(input as EnumMacroInput).to_token_stream().into();
-    println!("{}", stream);
-    stream
+    parse_macro_input!(input as EnumMacroInput).to_token_stream().into()
 }
 
 
@@ -285,8 +311,6 @@ pub fn derive_packet(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
             }
         }
     };
-    // #[cfg(debug_assertions)]
-    // println!("{:#}", &res);
     res.into()
 }
 

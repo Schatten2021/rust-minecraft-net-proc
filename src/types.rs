@@ -184,10 +184,12 @@ impl ToTokens for FieldType {
 }
 pub struct Field {
     pub name: syn::Ident,
+    pub attributes: Vec<syn::Attribute>,
     pub r#type: FieldType,
 }
 impl Parse for Field {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let attrs = syn::Attribute::parse_outer(input)?;
         let mut input: CustomParseStream = input.into();
         input.try_consume::<syn::Token![pub]>();
         let name = input.parse::<syn::Ident>()?;
@@ -195,6 +197,7 @@ impl Parse for Field {
             input.try_consume::<syn::Token![,]>();
             return Ok(Self {
                 name,
+                attributes: attrs,
                 r#type: FieldType::None,
             })
         }
@@ -202,6 +205,7 @@ impl Parse for Field {
         input.try_consume::<syn::Token![,]>();
         Ok(Self {
             name,
+            attributes: attrs,
             r#type,
         })
     }
@@ -240,12 +244,9 @@ impl Field {
 }
 
 pub struct CustomParseStream<'a> {
-    inner: syn::parse::ParseStream<'a>,
+    inner: ParseStream<'a>,
 }
 impl<'a> CustomParseStream<'a> {
-    pub fn new(input: syn::parse::ParseStream<'a>) -> Self {
-        Self { inner: input }
-    }
     pub fn try_consume<T: Parse >(&mut self) -> bool {
         if let Err(_) = self.inner.fork().parse::<T>() {
             false
@@ -254,16 +255,12 @@ impl<'a> CustomParseStream<'a> {
             true
         }
     }
-    pub fn expect<T: Parse>(&mut self) -> syn::Result<()> {
-        self.inner.parse::<T>()?;
-        Ok(())
-    }
-    pub fn parse<T: syn::parse::Parse>(&mut self) -> syn::Result<T> {
+    pub fn parse<T: Parse>(&mut self) -> syn::Result<T> {
         self.inner.parse::<T>()
     }
 }
-impl<'a> From<syn::parse::ParseStream<'a>> for CustomParseStream<'a> {
-    fn from(input: syn::parse::ParseStream<'a>) -> Self {
+impl<'a> From<ParseStream<'a>> for CustomParseStream<'a> {
+    fn from(input: ParseStream<'a>) -> Self {
         Self { inner: input }
     }
 }
