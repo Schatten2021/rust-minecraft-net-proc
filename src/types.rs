@@ -224,7 +224,7 @@ impl Field {
             FieldType::None => return quote! {Self::#name => crate::fields::encode_var_int(#index as i32)},
             ty => match std::panic::catch_unwind(|| ty.get_encoder(quote! {v})) {
                 Ok(encoder) => encoder,
-                Err(e) => {println!("error while trying to get encoder for field {}", self.name); std::panic::resume_unwind(e) },
+                Err(e) => {eprintln!("error while trying to get encoder for field {}", self.name); std::panic::resume_unwind(e) },
             },
         };
         quote! {Self::#name(v) => {

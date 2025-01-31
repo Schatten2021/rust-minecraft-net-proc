@@ -230,7 +230,7 @@ impl ToTokens for EnumMacroInput {
         let encoders = self.body.iter()
             .enumerate().map(|(i, f)| match std::panic::catch_unwind(|| {
                 f.get_enum_encoder(i)}) {
-                Err(e) => {println!("error while parsing {}", self.name); std::panic::resume_unwind(e)},
+                Err(e) => {eprintln!("error while parsing {}", self.name); std::panic::resume_unwind(e)},
                 Ok(v) => v,
             })
             .collect::<Vec<_>>();
@@ -353,8 +353,6 @@ pub fn derive_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
     };
-    // #[cfg(debug_assertions)]
-    // println!("{:#}", &res);
     res.into()
 }
 fn get_packet_id(attrs: &[Attribute]) -> &LitInt {
@@ -419,7 +417,6 @@ fn get_encoder_and_decoder_for_field(field_type: &Type, val_ref: impl ToTokens +
         } else if ident == "Option" {
             handle_option(segment, val_ref, attrs)
         } else {
-            println!("unhandled type {:?}", ident);
             handle_generic(val_ref, path)
         },
     }
@@ -488,7 +485,7 @@ fn handle_int(attrs: &[Attribute], name: impl ToTokens) -> (TokenStream, TokenSt
     } else {
         #[cfg(debug_assertions)]
         if !is_const(attrs) {
-            println!("warning: unspecified Integer used for field {}", name.to_token_stream());
+            eprintln!("warning: unspecified Integer used for field {} guessing regular integer", name.to_token_stream());
         }
         (quote! {
             crate::fields::encode_int(#name)
@@ -507,7 +504,7 @@ fn handle_long(attrs: &[Attribute], name: impl ToTokens) -> (TokenStream, TokenS
     } else {
         #[cfg(debug_assertions)]
         if !is_const(attrs) {
-            println!("warning: unspecified Long used for field {}", name.to_token_stream());
+            eprintln!("warning: unspecified Long used for field {} guessing fixed size", name.to_token_stream());
         }
         (quote! {
             crate::fields::encode_long(#name)
